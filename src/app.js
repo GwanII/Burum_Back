@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const db = require('./database');
-const userRouter = require("./src/routes/userRoutes");
+const userRouter = require("./routes/userRoutes");
 
 // 환경변수(.env) 로딩
 dotenv.config();
