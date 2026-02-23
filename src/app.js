@@ -5,6 +5,7 @@ const db = require('./database');
 const path = require('path');
 const userRouter = require("./routes/userRoutes");
 const postRouter = require("./routes/postRoutes");
+const chatRouter = require("./routes/chatRoutes");
 
 // 환경변수(.env) 로딩
 dotenv.config();
@@ -21,6 +22,8 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 app.use('/api/users', userRouter);
 app.use('/api/posts', postRouter);
+app.use('/api/chat', chatRouter);
+
 
 // 기본 접속 테스트
 app.get('/', (req, res) => {
@@ -29,7 +32,8 @@ app.get('/', (req, res) => {
 
 // 서버 시작
 app.listen(PORT, () => {
-  console.log(`
+  console.log(
+  `
   🚀  Server listening on port: ${PORT}
   🚀  http://localhost:${PORT}
   `);

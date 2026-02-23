@@ -15,14 +15,10 @@ const connection = mysql.createConnection({
 
 // 2. 실행할 SQL 명령어
 const sql = `
+  CREATE DATABASE IF NOT EXISTS burum_db;
   USE burum_db;
 
-  -- 1. 기존 테이블이 있다면 삭제 (구조 변경을 위해)
-  DROP TABLE IF EXISTS posts;
-  DROP TABLE IF EXISTS users;
-
-  -- 2. 유저 테이블 생성
-  CREATE TABLE users (
+  CREATE TABLE IF NOT EXISTS users (
     id INT AUTO_INCREMENT PRIMARY KEY,
     nickname VARCHAR(50) NOT NULL,
     email VARCHAR(100) NOT NULL UNIQUE,
@@ -32,30 +28,18 @@ const sql = `
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   );
 
-  -- 3. 게시글 테이블 생성 (deadline, tags 추가됨!) 
-  CREATE TABLE posts (
+  CREATE TABLE IF NOT EXISTS posts (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
     title VARCHAR(100) NOT NULL,
     content TEXT NOT NULL,
     cost INT DEFAULT 0,
     status ENUM('WAITING', 'MATCHED', 'COMPLETE') DEFAULT 'WAITING',
-    deadline DATETIME,        -- 👈 마감 기한 (날짜+시간)
-    tags JSON,                -- 👈 해시태그 (리스트 형태 저장)
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)
   );
-
-  -- 4. 테스트 데이터 넣기
-  INSERT INTO users (nickname, email, password, phone) 
-  VALUES ('케로로', 'keroro@test.com', '1234', '010-1234-5678');
-
-  -- tags는 '["#태그1", "#태그2"]' 형태로 넣습니다.
-  INSERT INTO posts (user_id, title, content, cost, status, deadline, tags) VALUES 
-  (4, '카레 가져다주기', '고씨네에서 카레 포장 부탁해요!', 5000, 'WAITING', '2024-02-20 18:00:00', '["#배달", "#음식"]'),
-  (4, '수리검 표적지 만들기', '표적지 50장 인쇄 부탁합니다.', 7000, 'WAITING', '2024-02-21 12:00:00', '["#제작", "#문구", "#급함"]'),
-  (4, '편의점 택배 수령', '집 앞 편의점 택배 좀 찾아주세요.', 3000, 'WAITING', '2024-02-15 10:00:00', '["#심부름"]');
 `;
+
 connection.connect((err) => {
   if (err) return console.error('❌ 접속 실패 (비번 확인 필요):', err);
   
