@@ -1,10 +1,11 @@
 const db = require('../database');
+const multer = require("multer");
 
-// 1️⃣ 채팅방 생성
+// 1️1. 채팅방 생성
 exports.createChatRoom = (req, res) => {
   const { user1, user2 } = req.body;
 
-  // 1️⃣ 이미 같은 방이 있는지 검사
+  // 이미 같은 방이 있는지 검사
   const checkSql = `
     SELECT cr.id
     FROM chat_rooms cr
@@ -25,7 +26,7 @@ exports.createChatRoom = (req, res) => {
       });
     }
 
-    // 2️⃣ 없으면 새로 생성
+    // 없으면 새로 생성
     const createRoomSql = `INSERT INTO chat_rooms () VALUES ()`;
 
     db.query(createRoomSql, (err2, result) => {
@@ -50,7 +51,7 @@ exports.createChatRoom = (req, res) => {
   });
 };
 
-// 2️⃣ 메시지 전송
+// 2. 메시지 전송
 exports.sendMessage = (req, res) => {
   const { chatRoomId, senderId, content } = req.body;
 
@@ -69,7 +70,7 @@ exports.sendMessage = (req, res) => {
   });
 };
 
-// 3️⃣ 채팅방 메시지 조회
+// 3. 채팅방 메시지 조회
 exports.getMessages = (req, res) => {
   const roomId = req.params.roomId;
 
@@ -88,26 +89,53 @@ exports.getMessages = (req, res) => {
   });
 };
 
-// 채팅방 목록 조회
-exports.getMyChatRooms = (req, res) => {
-  const userId = req.params.userId;
+// 4. 채팅방 목록 조회
+exports.getMyChatRooms = async (req, res) => {
+  const userId = req.user.id;
 
-  const sql = `
-    SELECT cr.id AS roomId, cr.created_at
-    FROM chat_rooms cr
-    JOIN chat_room_users cru ON cr.id = cru.chat_room_id
-    WHERE cru.user_id = ?
-    ORDER BY cr.created_at DESC
-  `;
+  try {
+    const [rooms] = await db.query(`
+      SELECT 
+        cr.id AS roomId,
 
-  db.query(sql, [userId], (err, results) => {
-    if (err) return res.status(500).json(err);
+        -- 마지막 메시지
+        m.content AS lastMessage,
+        m.created_at AS lastMessageTime,
 
-    res.json(results);
-  });
+        -- 안 읽은 메시지 개수
+        (
+          SELECT COUNT(*) 
+          FROM messages 
+          WHERE chat_room_id = cr.id
+          AND sender_id != ?
+          AND is_read = 0
+        ) AS unreadCount
+
+      FROM chat_rooms cr
+      JOIN chat_room_users cru 
+        ON cr.id = cru.chat_room_id
+
+      LEFT JOIN messages m 
+        ON m.id = (
+          SELECT id FROM messages 
+          WHERE chat_room_id = cr.id
+          ORDER BY created_at DESC
+          LIMIT 1
+        )
+
+      WHERE cru.user_id = ?
+      ORDER BY lastMessageTime DESC
+    `, [userId, userId]);
+
+    res.json(rooms);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "에러 발생" });
+  }
 };
 
-// 읽음 처리
+// 5. 읽음 처리
 exports.markAsRead = (req, res) => {
   const { roomId, userId } = req.body;
 
@@ -124,7 +152,7 @@ exports.markAsRead = (req, res) => {
     res.json({ message: "읽음 처리 완료" });
   });
 };
-// 안읽음 개수 
+// 6. 안읽음 개수 
 exports.getUnreadCount = (req, res) => {
   const userId = req.params.userId;
 
@@ -140,5 +168,63 @@ exports.getUnreadCount = (req, res) => {
     if (err) return res.status(500).json(err);
 
     res.json(results);
+  });
+};
+
+// 7. 채팅방 나가기
+exports.leaveChatRoom = async (req, res) => {
+  const userId = req.user.id;
+  const { roomId } = req.params;
+
+  try {
+    await db.query(
+      `DELETE FROM chat_room_users 
+       WHERE chat_room_id = ? AND user_id = ?`,
+      [roomId, userId]
+    );
+
+    res.json({ message: "채팅방에서 나갔습니다." });
+  } catch (err) {
+    res.status(500).json({ message: "에러 발생" });
+  }
+};
+
+// 8. 이미지 전송
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, "uploads/");
+  },
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + "-" + file.originalname);
+  }
+});
+
+const upload = multer({ storage });
+
+exports.upload = upload;
+
+exports.sendImageMessage = (req, res) => {
+  const { chatRoomId, senderId } = req.body;
+
+  if (!req.file) {
+    return res.status(400).json({ message: "이미지 파일이 필요합니다." });
+  }
+
+  const imageUrl = `/uploads/${req.file.filename}`;
+
+  const sql = `
+    INSERT INTO messages 
+    (chat_room_id, sender_id, type, image_url)
+    VALUES (?, ?, 'image', ?)
+  `;
+
+  db.query(sql, [chatRoomId, senderId, imageUrl], (err, result) => {
+    if (err) return res.status(500).json(err);
+
+    res.json({
+      message: "이미지 전송 성공",
+      messageId: result.insertId,
+      imageUrl
+    });
   });
 };
