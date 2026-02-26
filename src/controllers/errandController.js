@@ -1,29 +1,30 @@
-const db = require('../../database');
+const db = require('../database');
 const dotenv = require('dotenv');
 
 dotenv.config();
 
 exports.createErrand = async (req, res) => {
   try {
-    const { user, title, context, cost, deadline, tags, image_url } = req.body;
+    const { user_id, title, content, cost, deadline, tags, image_url } = req.body;
     // status는 방금 등록했으니 'WAITING'으로 고정.
     const sql = `
-      INSERT INTO errands (
-        user, title, context, cost, status, deadline, tags, image_url
+      INSERT INTO posts (
+        user_id, title, content, cost, status, deadline, tags, image_url
       ) VALUES (?, ?, ?, ?, 'WAITING', ?, ?, ?)
     `;
 
     const values = [
-      user, 
+      user_id, 
       title, 
-      context, 
+      content, 
       cost, 
       deadline, 
       JSON.stringify(tags), // 배열이나 객체를 JSON 문자열로 변환.
       image_url
     ];
 
-    const [result] = await db.execute(sql, values);
+    // const [result] = await db.execute(sql, values);
+    const [result] = await db.promise().execute(sql, values);
 
     res.status(201).json({
       success: true,
