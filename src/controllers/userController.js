@@ -6,21 +6,17 @@ const dotenv = require('dotenv');
 dotenv.config();
 
 exports.signup = async (req, res) => {
-    const { nickname, email, password } = req.body;
-    
-    let phone = req.body.phone;
+    const { nickname, email, password, phone } = req.body;
 
     if (!nickname || !email || !password) {
         return res.status(400).json({ message: '닉네임, 이메일, 비밀번호는 필수입니다.' });
     }
 
-    if (phone) {
-        phone = phone.replace(/[^0-9]/g, "");
-    }
+    const sanitizedPhone = phone ? phone.replace(/[^0-9]/g, "") : null;
 
-    const sql = 'SELECT * FROM users WHERE email = ? OR nickname = ?';
+    const sql = 'SELECT * FROM users WHERE email = ? OR nickname = ? OR phone = ?';
 
-    db.query(sql, [email, nickname], async (err, results) => {
+    db.query(sql, [email, nickname, sanitizedPhone], async (err, results) => {
         if (err) {
             console.error(err);
             return res.status(500).json({ message: '서버 오류 (중복 체크 중)' });
@@ -37,7 +33,7 @@ exports.signup = async (req, res) => {
                 return res.status(409).json({ message: '이미 존재하는 닉네임입니다.' });
             }
 
-            const phoneExists = results.some(user => user.phone === phone);
+            const phoneExists = results.some(user => user.phone === sanitizedPhone);
             if (phoneExists) {
                 return res.status(409).json({ message: '이미 존재하는 전화번호입니다.' });
             }
@@ -51,7 +47,7 @@ exports.signup = async (req, res) => {
                 VALUES (?, ?, ?, ?)
             `;
 
-            db.query(insertSql, [nickname, email, hashedPassword, phone], (err, result) => {
+            db.query(insertSql, [nickname, email, hashedPassword, sanitizedPhone], (err, result) => {
                 if (err) {
                     console.error(err);
                     return res.status(500).json({ message: '회원가입 실패 (DB 저장 오류)' });
