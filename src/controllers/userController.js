@@ -12,9 +12,11 @@ exports.signup = async (req, res) => {
         return res.status(400).json({ message: '닉네임, 이메일, 비밀번호는 필수입니다.' });
     }
 
-    const sql = 'SELECT * FROM users WHERE email = ? OR nickname = ?';
+    const sanitizedPhone = phone ? phone.replace(/[^0-9]/g, "") : null;
 
-    db.query(sql, [email, nickname], async (err, results) => {
+    const sql = 'SELECT * FROM users WHERE email = ? OR nickname = ? OR phone = ?';
+
+    db.query(sql, [email, nickname, sanitizedPhone], async (err, results) => {
         if (err) {
             console.error(err);
             return res.status(500).json({ message: '서버 오류 (중복 체크 중)' });
@@ -30,6 +32,11 @@ exports.signup = async (req, res) => {
             if (nicknameExists) {
                 return res.status(409).json({ message: '이미 존재하는 닉네임입니다.' });
             }
+
+            const phoneExists = results.some(user => user.phone === sanitizedPhone);
+            if (phoneExists) {
+                return res.status(409).json({ message: '이미 존재하는 전화번호입니다.' });
+            }
         }
 
         try {
@@ -40,7 +47,7 @@ exports.signup = async (req, res) => {
                 VALUES (?, ?, ?, ?)
             `;
 
-            db.query(insertSql, [nickname, email, hashedPassword, phone], (err, result) => {
+            db.query(insertSql, [nickname, email, hashedPassword, sanitizedPhone], (err, result) => {
                 if (err) {
                     console.error(err);
                     return res.status(500).json({ message: '회원가입 실패 (DB 저장 오류)' });
