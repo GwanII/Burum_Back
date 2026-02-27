@@ -90,49 +90,48 @@ exports.getMessages = (req, res) => {
 };
 
 // 4. 채팅방 목록 조회
-exports.getMyChatRooms = async (req, res) => {
-  const userId = req.user.id;
+exports.getMyChatRooms = (req, res) => {
+  const userId = req.params.userId;
 
-  try {
-    const [rooms] = await db.query(`
-      SELECT 
-        cr.id AS roomId,
+  const sql = `
+    SELECT 
+      cr.id AS roomId,
 
-        -- 마지막 메시지
-        m.content AS lastMessage,
-        m.created_at AS lastMessageTime,
+      m.content AS lastMessage,
+      m.created_at AS lastMessageTime,
 
-        -- 안 읽은 메시지 개수
-        (
-          SELECT COUNT(*) 
-          FROM messages 
-          WHERE chat_room_id = cr.id
-          AND sender_id != ?
-          AND is_read = 0
-        ) AS unreadCount
+      (
+        SELECT COUNT(*) 
+        FROM messages 
+        WHERE chat_room_id = cr.id
+        AND sender_id != ?
+        AND is_read = 0
+      ) AS unreadCount
 
-      FROM chat_rooms cr
-      JOIN chat_room_users cru 
-        ON cr.id = cru.chat_room_id
+    FROM chat_rooms cr
+    JOIN chat_room_users cru 
+      ON cr.id = cru.chat_room_id
 
-      LEFT JOIN messages m 
-        ON m.id = (
-          SELECT id FROM messages 
-          WHERE chat_room_id = cr.id
-          ORDER BY created_at DESC
-          LIMIT 1
-        )
+    LEFT JOIN messages m 
+      ON m.id = (
+        SELECT id FROM messages 
+        WHERE chat_room_id = cr.id
+        ORDER BY created_at DESC
+        LIMIT 1
+      )
 
-      WHERE cru.user_id = ?
-      ORDER BY lastMessageTime DESC
-    `, [userId, userId]);
+    WHERE cru.user_id = ?
+    ORDER BY lastMessageTime DESC
+  `;
 
-    res.json(rooms);
+  db.query(sql, [userId, userId], (err, results) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ message: "에러 발생" });
+    }
 
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "에러 발생" });
-  }
+    res.json(results);
+  });
 };
 
 // 5. 읽음 처리
