@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const chatController = require('../controllers/chatController');
+const { verifyToken } = require("../middlewares/authMiddleware");
 
 // 채팅방 생성
 router.post('/room', chatController.createChatRoom);
@@ -15,4 +16,16 @@ router.get("/rooms/:userId", chatController.getMyChatRooms);
 // 읽음 처리 
 router.post("/read", chatController.markAsRead);
 router.get("/unread/:userId", chatController.getUnreadCount);
+// 채팅방 나가기 
+router.delete(
+  "/rooms/:roomId",
+  verifyToken,
+  chatController.leaveChatRoom
+);
+//이미지 전송
+router.post(
+  "/image",
+  chatController.upload.single("image"),
+  chatController.sendImageMessage
+);
 module.exports = router;
