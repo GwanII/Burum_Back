@@ -11,4 +11,8 @@ router.post('/logout', verifyToken, userController.logout);
 
 router.post('/refresh', userController.refreshToken);
 
+router.patch('/location', verifyToken, userController.updateLocation);
+
+router.post('/google-login', userController.googleLogin);
+
 module.exports = router;
