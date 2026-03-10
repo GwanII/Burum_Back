@@ -62,3 +62,19 @@ exports.getTrendingTags = (req, res) => {
         res.status(200).json(sortedTags);
     });
 };
+
+//옮길거
+exports.getUserProfile = (req, res) => {
+    const userId = req.user.id; // 미들웨어 verifyToken이 넣어준 정보
+
+    // 딱 닉네임만 가져오는 쿼리
+    const sql = 'SELECT nickname FROM users WHERE id = ?';
+
+    db.query(sql, [userId], (err, results) => {
+        if (err) return res.status(500).json({ message: 'DB 에러' });
+        if (results.length === 0) return res.status(404).json({ message: '유저 없음' });
+
+        // 플러터로 닉네임 전송
+        res.status(200).json({ nickname: results[0].nickname });
+    });
+};
