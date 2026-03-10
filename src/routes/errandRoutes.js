@@ -3,7 +3,11 @@ const router = express.Router();
 
 const errandController = require('../controllers/errandController');
 
-router.post('/', errandController.createErrand);
+const multer = require('multer');
+
+const upload = multer({dest: 'upload/' });
+
+router.post('/', upload.array('images', 10), errandController.createErrand);
 
 // router.get('/', errandController.getErrands);
 
