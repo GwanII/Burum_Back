@@ -420,4 +420,89 @@ exports.resetPassword = async (req, res) => {
             return res.status(500).json({ message: '비밀번호 처리 중 오류가 발생했습니다.' });
         }
     });
+}
+
+//다은 작업, 유저 프로필 불러오기에 필요 
+exports.getUserProfile = (req, res) => {
+    const userId = req.params.id;
+
+    const userSql = `
+        SELECT
+            id,
+            nickname,
+            location,
+            profile_image_url,
+            user_title,
+            grade,
+            created_at
+        FROM users
+        WHERE id = ?
+    `;
+
+    const createdPostsSql = `
+        SELECT
+            id,
+            user_id,
+            title,
+            content,
+            cost,
+            status,
+            deadline,
+            tags,
+            created_at,
+            image_url,
+            assigned_user_id
+        FROM posts
+        WHERE user_id = ?
+        ORDER BY created_at DESC
+    `;
+
+    const assignedPostsSql = `
+        SELECT
+            id,
+            user_id,
+            title,
+            content,
+            cost,
+            status,
+            deadline,
+            tags,
+            created_at,
+            image_url,
+            assigned_user_id
+        FROM posts
+        WHERE assigned_user_id = ?
+        ORDER BY created_at DESC
+    `;
+
+    db.query(userSql, [userId], (err, userResults) => {
+        if (err) {
+            console.error(err);
+            return res.status(500).json({ message: '유저 조회 중 DB 오류' });
+        }
+
+        if (userResults.length === 0) {
+            return res.status(404).json({ message: '사용자를 찾을 수 없습니다.' });
+        }
+
+        db.query(createdPostsSql, [userId], (err2, createdPosts) => {
+            if (err2) {
+                console.error(err2);
+                return res.status(500).json({ message: '작성 게시물 조회 중 DB 오류' });
+            }
+
+            db.query(assignedPostsSql, [userId], (err3, assignedPosts) => {
+                if (err3) {
+                    console.error(err3);
+                    return res.status(500).json({ message: '수락 게시물 조회 중 DB 오류' });
+                }
+
+                return res.status(200).json({
+                    user: userResults[0],
+                    createdPosts,
+                    assignedPosts
+                });
+            });
+        });
+    });
 };
