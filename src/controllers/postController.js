@@ -78,3 +78,36 @@ exports.getUserProfile = (req, res) => {
         res.status(200).json({ nickname: results[0].nickname });
     });
 };
+
+//다은 작업, 채팅방 상단 게시물 연동에 필요
+exports.getPostDetail = (req, res) => {
+    const postId = req.params.id;
+
+    const sql = `
+        SELECT
+            p.*,
+            u.nickname AS writerNickname,
+            u.profile_image_url AS writerProfileImage,
+            u.user_title AS writerTitle,
+            u.grade AS writerGrade,
+            au.nickname AS assignedUserNickname
+        FROM posts p
+        LEFT JOIN users u ON p.user_id = u.id
+        LEFT JOIN users au ON p.assigned_user_id = au.id
+        WHERE p.id = ?
+        LIMIT 1
+    `;
+
+    db.query(sql, [postId], (err, results) => {
+        if (err) {
+            console.error(err);
+            return res.status(500).json({ message: '게시물 상세 조회 중 DB 오류' });
+        }
+
+        if (results.length === 0) {
+            return res.status(404).json({ message: '게시물을 찾을 수 없습니다.' });
+        }
+
+        res.status(200).json(results[0]);
+    });
+};
