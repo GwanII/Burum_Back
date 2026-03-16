@@ -15,4 +15,6 @@ router.patch('/location', verifyToken, userController.updateLocation);
 
 router.post('/google-login', userController.googleLogin);
 
+router.post('/reset-password', userController.resetPassword);
+
 module.exports = router;
