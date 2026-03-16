@@ -82,7 +82,8 @@ exports.getMessages = (req, res) => {
   const sql = `
     SELECT 
       m.*,
-      u.nickname
+      u.nickname,
+      u.profile_image_url
     FROM messages m
     JOIN users u ON m.sender_id = u.id
     WHERE m.chat_room_id = ?
@@ -108,10 +109,18 @@ exports.getMyChatRooms = (req, res) => {
 
       u.id AS otherUserId,
       u.nickname AS otherUserNickname,
+      u.profile_image_url AS otherUserProfileImage,
+      u.user_title AS otherUserTitle,
+      u.grade AS otherUserGrade,
 
       p.id AS postId,
       p.title AS postTitle,
       p.image_url AS postImage,
+      p.content AS postContent,
+      p.cost AS postCost,
+      p.status AS postStatus,
+      p.deadline AS postDeadline,
+      p.user_id AS postWriterId,
 
       m.content AS lastMessage,
       m.type AS lastMessageType,

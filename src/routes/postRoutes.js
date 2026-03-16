@@ -11,4 +11,7 @@ router.get('/', postController.getAllPosts);
 
 router.get('/profile', verifyToken, postController.getUserProfile); // 옮길거 
 
+// 다은 작업, 채팅방-게시물 연동에 필요
+router.get('/:id', postController.getPostDetail);
+
 module.exports = router;
