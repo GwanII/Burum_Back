@@ -1,6 +1,4 @@
 const jwt = require('jsonwebtoken');
-const dotenv = require('dotenv');
-dotenv.config();
 
 exports.verifyToken = (req, res, next) => {
   // 1. 헤더에서 토큰 가져오기 (Authorization: Bearer <token>)
@@ -8,6 +6,10 @@ exports.verifyToken = (req, res, next) => {
   
   if (!authHeader) {
     return res.status(403).json({ message: '토큰이 제공되지 않았습니다.' });
+  }
+
+  if (!authHeader.startsWith('Bearer ')) {
+    return res.status(403).json({ message: '지원되지 않는 토큰 형식입니다. (Bearer 필요)' });
   }
 
   // "Bearer " 부분을 떼어내고 토큰만 추출
@@ -18,14 +20,17 @@ exports.verifyToken = (req, res, next) => {
   }
 
   // 2. 토큰 검증
-  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
-    if (err) {
-      // 토큰 만료 or 위조된 경우
-      return res.status(401).json({ message: '유효하지 않거나 만료된 토큰입니다.' });
-    }
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     // 3. 검증 성공 시, 요청(req) 객체에 사용자 정보 저장
     req.user = decoded; // 이제 컨트롤러에서 req.user.id 로 접근 가능!
     next(); // 다음 미들웨어(컨트롤러)로 통과!
-  });
+  } catch (err) {
+    // 토큰 만료(TokenExpiredError) or 위조(JsonWebTokenError)된 경우
+    if (err.name === 'TokenExpiredError') {
+      return res.status(401).json({ message: '토큰이 만료되었습니다. 다시 로그인해주세요.', code: 'TOKEN_EXPIRED' });
+    }
+    return res.status(401).json({ message: '유효하지 않은 토큰입니다.', code: 'INVALID_TOKEN' });
+  }
 };

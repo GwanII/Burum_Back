@@ -15,6 +15,7 @@ router.patch('/location', verifyToken, userController.updateLocation);
 
 router.post('/google-login', userController.googleLogin);
 
+router.post('/reset-password', userController.resetPassword);
 //다은 작업, 프로필 상세 페이지
 router.get('/profile/:id', userController.getUserProfile);
 
