@@ -65,17 +65,19 @@ exports.getTrendingTags = (req, res) => {
 
 //옮길거
 exports.getUserProfile = (req, res) => {
-    const userId = req.user.id; // 미들웨어 verifyToken이 넣어준 정보
-
-    // 딱 닉네임만 가져오는 쿼리
-    const sql = 'SELECT nickname FROM users WHERE id = ?';
+    const userId = req.user.id;
+    // 🌟 id를 추가로 SELECT 합니다.
+    const sql = 'SELECT id, nickname FROM users WHERE id = ?';
 
     db.query(sql, [userId], (err, results) => {
         if (err) return res.status(500).json({ message: 'DB 에러' });
         if (results.length === 0) return res.status(404).json({ message: '유저 없음' });
 
-        // 플러터로 닉네임 전송
-        res.status(200).json({ nickname: results[0].nickname });
+        // 🌟 id와 nickname을 모두 플러터로 보냅니다.
+        res.status(200).json({ 
+            id: results[0].id, 
+            nickname: results[0].nickname 
+        });
     });
 };
 
@@ -109,5 +111,39 @@ exports.getPostDetail = (req, res) => {
         }
 
         res.status(200).json(results[0]);
+    });
+};
+
+exports.applyForErrand = (req, res) => {
+    // 🌟 플러터에서 보낸 postId, userId, message를 받습니다.
+    const { postId, message } = req.body; 
+    const applicantId = Number(req.user ? req.user.id : req.body.userId);
+
+    // 방어 로직: 필수 데이터가 안 넘어왔을 때
+    if (!postId || !applicantId) {
+        return res.status(400).json({ message: '게시물 ID와 지원자 ID가 모두 필요합니다.' });
+    }
+
+    // 🌟 핵심: posts 테이블의 특정 게시물(id)을 찾아서, 빈칸(applicant_id, apply_message)을 채워줍니다!
+    const sql = `
+        UPDATE posts 
+        SET applicant_id = ?, apply_message = ? 
+        WHERE id = ?
+    `;
+
+    // 쿼리 실행 (? 자리에 들어갈 값들을 순서대로 배열로 넣습니다)
+    db.query(sql, [applicantId, message, postId], (err, results) => {
+        if (err) {
+            console.error('심부름 지원 DB 에러:', err);
+            return res.status(500).json({ message: '지원 접수 중 서버 오류가 발생했습니다.' });
+        }
+
+        // 만약 업데이트된 줄(row)이 없다면 = 해당 ID의 게시물이 존재하지 않는다면
+        if (results.affectedRows === 0) {
+            return res.status(404).json({ message: '해당 심부름 게시물을 찾을 수 없습니다.' });
+        }
+
+        // 플러터로 성공 축포 쏘기! (200 OK)
+        res.status(200).json({ message: '심부름 지원이 성공적으로 접수되었습니다!' });
     });
 };

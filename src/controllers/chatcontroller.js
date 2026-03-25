@@ -1,5 +1,40 @@
 const db = require('../database');
 const multer = require('multer');
+const { getIo } = require('../socket');
+
+/**
+ * 특정 채팅방에 속한 모든 사용자에게
+ * 채팅목록 갱신용 이벤트를 보냄
+ */
+function emitChatRoomUpdatedToUsers(roomId) {
+  const sql = `
+    SELECT user_id
+    FROM chat_room_users
+    WHERE chat_room_id = ?
+  `;
+
+  db.query(sql, [roomId], (err, users) => {
+    if (err) {
+      console.error('emitChatRoomUpdatedToUsers 조회 오류:', err);
+      return;
+    }
+
+    try {
+      const io = getIo();
+
+      users.forEach((user) => {
+        io.to(`user:${user.user_id}`).emit('chatRoomUpdated', {
+          roomId: Number(roomId),
+        });
+      });
+    } catch (socketErr) {
+      console.error(
+        'emitChatRoomUpdatedToUsers socket 오류:',
+        socketErr.message
+      );
+    }
+  });
+}
 
 // 1. 채팅방 생성
 exports.createChatRoom = (req, res) => {
@@ -47,6 +82,15 @@ exports.createChatRoom = (req, res) => {
       db.query(addUsersSql, [roomId, user1, roomId, user2], (err3) => {
         if (err3) return res.status(500).json(err3);
 
+        try {
+          const io = getIo();
+
+          io.to(`user:${user1}`).emit('chatRoomCreated', { roomId });
+          io.to(`user:${user2}`).emit('chatRoomCreated', { roomId });
+        } catch (socketErr) {
+          console.error('socket emit 오류(createChatRoom):', socketErr.message);
+        }
+
         res.json({
           message: '채팅방 새로 생성',
           roomId,
@@ -68,9 +112,41 @@ exports.sendMessage = (req, res) => {
   db.query(sql, [chatRoomId, senderId, content], (err, result) => {
     if (err) return res.status(500).json(err);
 
-    res.json({
-      message: '메시지 전송 성공',
-      messageId: result.insertId,
+    const messageId = result.insertId;
+
+    const messageSql = `
+      SELECT 
+        m.*,
+        u.nickname,
+        u.profile_image_url
+      FROM messages m
+      JOIN users u ON m.sender_id = u.id
+      WHERE m.id = ?
+      LIMIT 1
+    `;
+
+    db.query(messageSql, [messageId], (err2, rows) => {
+      if (err2) return res.status(500).json(err2);
+
+      const newMessage = rows[0];
+
+      try {
+        const io = getIo();
+
+        // 채팅방 안 사용자들에게 새 메시지 실시간 전송
+        io.to(`room:${chatRoomId}`).emit('newMessage', newMessage);
+      } catch (socketErr) {
+        console.error('socket emit 오류(sendMessage):', socketErr.message);
+      }
+
+      // 채팅목록 갱신은 각 사용자 개인 room으로 전송
+      emitChatRoomUpdatedToUsers(chatRoomId);
+
+      res.json({
+        message: '메시지 전송 성공',
+        messageId,
+        data: newMessage,
+      });
     });
   });
 };
@@ -188,6 +264,21 @@ exports.markAsRead = (req, res) => {
   db.query(sql, [roomId, userId], (err) => {
     if (err) return res.status(500).json(err);
 
+    try {
+      const io = getIo();
+
+      // 채팅방 안에 있는 사용자들에게 읽음 처리 알림
+      io.to(`room:${roomId}`).emit('messagesRead', {
+        roomId: Number(roomId),
+        userId: Number(userId),
+      });
+    } catch (socketErr) {
+      console.error('socket emit 오류(markAsRead):', socketErr.message);
+    }
+
+    // 채팅목록 unreadCount 갱신
+    emitChatRoomUpdatedToUsers(roomId);
+
     res.json({ message: '읽음 처리 완료' });
   });
 };
@@ -235,6 +326,20 @@ exports.leaveChatRoom = (req, res) => {
       return res.status(500).json({ message: '에러 발생' });
     }
 
+    try {
+      const io = getIo();
+
+      // 나간 사람 본인 목록에서 방 제거
+      io.to(`user:${userId}`).emit('chatRoomDeleted', {
+        roomId: Number(roomId),
+      });
+    } catch (socketErr) {
+      console.error('socket emit 오류(leaveChatRoom):', socketErr.message);
+    }
+
+    // 남아있는 사용자들의 채팅목록도 갱신
+    emitChatRoomUpdatedToUsers(roomId);
+
     res.json({ message: '채팅방에서 나갔습니다.' });
   });
 };
@@ -254,6 +359,18 @@ exports.togglePinRoom = (req, res) => {
     if (err) {
       console.error(err);
       return res.status(500).json({ message: '고정 처리 중 에러 발생' });
+    }
+
+    try {
+      const io = getIo();
+
+      // 핀 고정은 본인 목록만 바뀌면 됨
+      io.to(`user:${userId}`).emit('chatRoomPinned', {
+        roomId: Number(roomId),
+        isPinned: !!isPinned,
+      });
+    } catch (socketErr) {
+      console.error('socket emit 오류(togglePinRoom):', socketErr.message);
     }
 
     res.json({
@@ -292,10 +409,45 @@ exports.sendImageMessage = (req, res) => {
   db.query(sql, [chatRoomId, senderId, imageUrl], (err, result) => {
     if (err) return res.status(500).json(err);
 
-    res.json({
-      message: '이미지 전송 성공',
-      messageId: result.insertId,
-      imageUrl,
+    const messageId = result.insertId;
+
+    const messageSql = `
+      SELECT 
+        m.*,
+        u.nickname,
+        u.profile_image_url
+      FROM messages m
+      JOIN users u ON m.sender_id = u.id
+      WHERE m.id = ?
+      LIMIT 1
+    `;
+
+    db.query(messageSql, [messageId], (err2, rows) => {
+      if (err2) return res.status(500).json(err2);
+
+      const newMessage = rows[0];
+
+      try {
+        const io = getIo();
+
+        // 채팅방 안 사용자들에게 새 이미지 메시지 실시간 전송
+        io.to(`room:${chatRoomId}`).emit('newMessage', newMessage);
+      } catch (socketErr) {
+        console.error(
+          'socket emit 오류(sendImageMessage):',
+          socketErr.message
+        );
+      }
+
+      // 채팅목록 갱신
+      emitChatRoomUpdatedToUsers(chatRoomId);
+
+      res.json({
+        message: '이미지 전송 성공',
+        messageId,
+        imageUrl,
+        data: newMessage,
+      });
     });
   });
 };
