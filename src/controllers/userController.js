@@ -86,7 +86,8 @@ exports.signup = async (req, res) => {
 };
 
 exports.login = async (req, res) => {
-    const { email, password } = req.body;
+    // 클라이언트에서 전달하는 자동 로그인 체크 여부 (기본값 false)
+    const { email, password, autoLogin } = req.body;
 
     if (!email || !password) {
         return res.status(400).json({ message: '이메일과 비밀번호를 모두 입력해주세요.'});
@@ -120,10 +121,13 @@ exports.login = async (req, res) => {
             { expiresIn: '1h' } // 개발 편의를 위해 1시간으로 설정함. 차후 수정할듯?
         );
 
+        // 자동 로그인 여부에 따라 리프레시 토큰 만료 시간 분기 처리
+        const refreshExpiresIn = autoLogin ? '30d' : '1d';
+
         const refreshToken = jwt.sign(
             { id: user.id, role: user.role },
             process.env.JWT_SECRET,
-            { expiresIn: '14d' }
+            { expiresIn: refreshExpiresIn }
         );
 
         const updateSql = 'UPDATE users SET refresh_token = ? WHERE id = ?';
@@ -229,16 +233,16 @@ exports.refreshToken = async (req, res) => {
 
 exports.updateLocation = async (req, res) => {
     const userId = req.user.id;     // 미들웨어가 확인한 id
-    const { location } = req.body;  // 프론트엔드에서 보낸 위치 정보
+    const { location, latitude, longitude } = req.body;  // 프론트엔드에서 보낸 위치 정보
 
-    if (!location) {
+    if (!location || !latitude || !longitude) {
         return res.status(400).json({ message: '위치 정보가 필요합니다.' });
     }
 
-    const sql = 'UPDATE users SET location = ? WHERE id = ?';
+    const sql = 'UPDATE users SET location = ?, latitude = ?, longitude = ? WHERE id = ?';
 
     try {
-        await db.promise().query(sql, [location, userId]);
+        await db.promise().query(sql, [location, latitude, longitude, userId]);
         res.status(200).json({ message: '위치 정보가 성공적으로 등록되었습니다.', location });
     } catch (err) {
         console.error('위치 업데이트 오류:', err);
@@ -247,7 +251,8 @@ exports.updateLocation = async (req, res) => {
 };
 
 exports.googleLogin = async (req, res) => {
-    const { idToken } = req.body;
+    // 구글 로그인 시에도 자동 로그인 옵션 제공 시 처리
+    const { idToken, autoLogin } = req.body;
 
     if (!idToken) {
         return res.status(400).json({ message: '구글 토큰이 없습니다.' });
@@ -278,9 +283,10 @@ exports.googleLogin = async (req, res) => {
             // 방금 가입한 유저의 ID 가져오기
             const newUserId = result.insertId;
 
+            const refreshExpiresIn = autoLogin ? '30d' : '1d';
             // 토큰 발급
-            const accessToken = jwt.sign({ id: newUserId }, process.env.JWT_SECRET, {expiresIn: '1h'}); // 추후 수정
-            const refreshToken = jwt.sign({ id: newUserId}, process.env.JWT_SECRET, {expiresIn: '7d' });
+            const accessToken = jwt.sign({ id: newUserId, role: 'user' }, process.env.JWT_SECRET, {expiresIn: '1h'}); // 추후 15m 으로 변경 예정
+            const refreshToken = jwt.sign({ id: newUserId, role: 'user' }, process.env.JWT_SECRET, {expiresIn: refreshExpiresIn });
 
             const updateTokenSql = 'UPDATE users SET refresh_token = ? WHERE id = ?';
             await db.promise().query(updateTokenSql, [refreshToken, newUserId]);
@@ -290,26 +296,27 @@ exports.googleLogin = async (req, res) => {
                 accessToken,
                 refreshToken,
                 requiresLocation: true, // 위치 정보(location)가 NULL이므로 requiresLocation: true 로 응답
-                user: { id: newUserId, nickname, location: null }
+                user: { id: newUserId, nickname, location: null, role: 'user' }
             });
         }
         // 4-B. 이미 가입된 유저라면? -> 바로 로그인 통과!
         else {
-            const accessToken = jwt.sign({ id: user.id }, process.env.JWT_SECRET, {expiresIn: '1h'}); // 추후 수정
-            const refreshToken = jwt.sign({ id: user.id}, process.env.JWT_SECRET, {expiresIn: '7d' });
+            const refreshExpiresIn = autoLogin ? '30d' : '1d';
+            const accessToken = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, {expiresIn: '1h'}); // 기존 유저 role 추가
+            const refreshToken = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, {expiresIn: refreshExpiresIn });
 
             const updateTokenSql = 'UPDATE users SET refresh_token = ? WHERE id = ?';
             await db.promise().query(updateTokenSql, [refreshToken, user.id]);
             
             // 위치 정보 유무에 따라 프론트 화면 분기
-            const requiresLocation = user.location === null;
+            const requiresLocation = user.location === null || user.latitude === null || user.longitude === null;
 
             return res.status(200).json({
                 message: '구글 로그인 성공!',
                 accessToken,
                 refreshToken,
                 requiresLocation,
-                user: { id: user.id, nickname: user.nickname, location: user.location }
+                user: { id: user.id, nickname: user.nickname, location: user.location, role: user.role }
             });
         }
     } catch (error) {
