@@ -392,7 +392,8 @@ exports.resetPassword = async (req, res) => {
     }
 }
 
-//다은 작업, 유저 프로필 불러오기에 필요 
+
+//다은 작업, 유저 프로필 불러오기에 필요  
 exports.getUserProfile = (req, res) => {
     const userId = req.params.id;
 

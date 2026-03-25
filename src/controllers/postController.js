@@ -65,17 +65,19 @@ exports.getTrendingTags = (req, res) => {
 
 //옮길거
 exports.getUserProfile = (req, res) => {
-    const userId = req.user.id; // 미들웨어 verifyToken이 넣어준 정보
-
-    // 딱 닉네임만 가져오는 쿼리
-    const sql = 'SELECT nickname FROM users WHERE id = ?';
+    const userId = req.user.id;
+    // 🌟 id를 추가로 SELECT 합니다.
+    const sql = 'SELECT id, nickname FROM users WHERE id = ?';
 
     db.query(sql, [userId], (err, results) => {
         if (err) return res.status(500).json({ message: 'DB 에러' });
         if (results.length === 0) return res.status(404).json({ message: '유저 없음' });
 
-        // 플러터로 닉네임 전송
-        res.status(200).json({ nickname: results[0].nickname });
+        // 🌟 id와 nickname을 모두 플러터로 보냅니다.
+        res.status(200).json({ 
+            id: results[0].id, 
+            nickname: results[0].nickname 
+        });
     });
 };
 
@@ -109,5 +111,64 @@ exports.getPostDetail = (req, res) => {
         }
 
         res.status(200).json(results[0]);
+    });
+};
+
+exports.applyForErrand = (req, res) => {
+    const postId = Number(req.body.postId);
+    const message = req.body.message || "";
+    const applicantId = Number(req.user ? req.user.id : req.body.userId);
+
+    if (!postId || !applicantId || isNaN(postId) || isNaN(applicantId)) {
+        return res.status(400).json({ message: '유효한 게시물 ID와 지원자 ID가 필요합니다.' });
+    }
+
+    // 🌟 새로운 지원 테이블에 INSERT!
+    const sql = `
+        INSERT INTO applications (post_id, user_id, message) 
+        VALUES (?, ?, ?)
+    `;
+
+    db.query(sql, [postId, applicantId, message], (err, results) => {
+        if (err) {
+            console.error('지원 접수 DB 에러:', err);
+            // 중복 지원 방지 (만약 post_id + user_id를 UNIQUE로 묶었다면)
+            if (err.code === 'ER_DUP_ENTRY') {
+                return res.status(409).json({ message: '이미 지원한 심부름입니다.' });
+            }
+            return res.status(500).json({ message: '서버 오류' });
+        }
+
+        res.status(200).json({ message: '심부름 지원이 성공적으로 접수되었습니다!' });
+    });
+};
+
+exports.getApplicants = (req, res) => {
+    const postId = req.params.postId; 
+
+    // 🌟 applications 테이블을 기준으로 users 정보를 조인해서 가져옵니다.
+    const sql = `
+        SELECT 
+            u.id AS user_id, 
+            u.nickname, 
+            u.profile_image_url, 
+            u.user_title, 
+            u.grade,
+            a.message AS apply_message,  -- 지원 메시지
+            a.status,                    -- 지원 상태 (PENDING, ACCEPTED 등)
+            a.created_at                 -- 지원한 시간
+        FROM applications a
+        JOIN users u ON a.user_id = u.id
+        WHERE a.post_id = ?
+        ORDER BY a.created_at DESC       -- 최신 지원자가 위로 오도록 정렬
+    `;
+
+    db.query(sql, [postId], (err, results) => {
+        if (err) {
+            console.error('지원자 목록 조회 에러:', err);
+            return res.status(500).json({ message: '서버 오류' });
+        }
+        
+        res.status(200).json(results);
     });
 };
