@@ -1,5 +1,5 @@
 // 💡 용사님의 DB 연결 마법서를 가져오오! (경로는 용사님 프로젝트에 맞게 수정하시오!)
-const db = require('../config/database'); 
+const db = require('../database'); 
 
 // 🚀 [1. 캘린더 일정 생성 마법!!!!!]
 exports.createCalendarEvent = async (req, res) => {
