@@ -9,6 +9,7 @@ const userRouter = require("./routes/userRoutes");
 const postRouter = require("./routes/postRoutes");
 const chatRouter = require("./routes/chatRoutes");
 const errandRouter = require("./routes/errandRoutes");
+const calendarRouter = require("./routes/calendarRoutes");
 const { initSocket } = require('./socket');
 
 // 환경변수(.env) 로딩
@@ -34,6 +35,7 @@ app.use('/api/users', userRouter);
 app.use('/api/posts', postRouter);
 app.use('/api/chat', chatRouter);
 app.use('/api/createErrand', errandRouter);
+app.use('/api/calendar', calendarRouter);
 
 // 기본 접속 테스트
 app.get('/', (req, res) => {
