@@ -40,7 +40,7 @@ exports.createErrand = async (req, res) => {
     res.status(201).json({
       success: true,
       message: "등록 성공",
-      errandId: result.insertId 
+      errandId: result.insertId,
     });
 
   } catch (error) {
