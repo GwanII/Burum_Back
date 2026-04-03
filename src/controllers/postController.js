@@ -147,7 +147,7 @@ exports.getApplicants = (req, res) => {
     const postId = req.params.postId; 
 
     // 🌟 applications 테이블을 기준으로 users 정보를 조인해서 가져옵니다.
-    const sql = `
+   const sql = `
         SELECT 
             u.id AS user_id, 
             u.nickname, 
@@ -156,7 +156,9 @@ exports.getApplicants = (req, res) => {
             u.grade,
             a.message AS apply_message,  -- 지원 메시지
             a.status,                    -- 지원 상태 (PENDING, ACCEPTED 등)
-            a.created_at                 -- 지원한 시간
+            a.created_at,                -- 지원한 시간
+            -- 👇 여기에 마법의 한 줄 추가! 👇
+            (SELECT assigned_user_id FROM posts WHERE id = a.post_id) AS assigned_user_id
         FROM applications a
         JOIN users u ON a.user_id = u.id
         WHERE a.post_id = ?
