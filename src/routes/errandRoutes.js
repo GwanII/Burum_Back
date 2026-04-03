@@ -8,6 +8,8 @@ const { verifyToken } = require('../middlewares/authMiddleware');
 const upload = multer({dest: 'upload/' });
 
 router.post('/', verifyToken, upload.array('images', 10), errandController.createErrand);
+router.put('/:postId/assign', verifyToken, errandController.assignErrand);
+router.put('/:postId/cancelAssign', verifyToken, errandController.cancelAssignErrand);
 
 // router.get('/', errandController.getErrands);
 
