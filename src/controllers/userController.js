@@ -118,7 +118,7 @@ exports.login = async (req, res) => {
         const accessToken = jwt.sign(
             { id: user.id, role: user.role },
             process.env.JWT_SECRET,
-            { expiresIn: '1h' } // 개발 편의를 위해 1시간으로 설정함. 차후 수정할듯?
+            { expiresIn: '15m' }
         );
 
         // 자동 로그인 여부에 따라 리프레시 토큰 만료 시간 분기 처리
@@ -201,7 +201,7 @@ exports.refreshToken = async (req, res) => {
         const newAccessToken = jwt.sign(
             { id: userId, role: user.role },
             process.env.JWT_SECRET,
-            { expiresIn: '1h' } // 개발 편의를 위해 1시간으로 설정함. 차후 수정할듯?
+            { expiresIn: '15m' }
         );
         
         // 토큰 순환(Token Rotation) 적용: 리프레시 토큰도 함께 재발급
@@ -285,7 +285,7 @@ exports.googleLogin = async (req, res) => {
 
             const refreshExpiresIn = autoLogin ? '30d' : '1d';
             // 토큰 발급
-            const accessToken = jwt.sign({ id: newUserId, role: 'user' }, process.env.JWT_SECRET, {expiresIn: '1h'}); // 추후 15m 으로 변경 예정
+            const accessToken = jwt.sign({ id: newUserId, role: 'user' }, process.env.JWT_SECRET, {expiresIn: '15m'});
             const refreshToken = jwt.sign({ id: newUserId, role: 'user' }, process.env.JWT_SECRET, {expiresIn: refreshExpiresIn });
 
             const updateTokenSql = 'UPDATE users SET refresh_token = ? WHERE id = ?';
@@ -302,7 +302,7 @@ exports.googleLogin = async (req, res) => {
         // 4-B. 이미 가입된 유저라면? -> 바로 로그인 통과!
         else {
             const refreshExpiresIn = autoLogin ? '30d' : '1d';
-            const accessToken = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, {expiresIn: '1h'}); // 기존 유저 role 추가
+            const accessToken = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, {expiresIn: '15m'});
             const refreshToken = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, {expiresIn: refreshExpiresIn });
 
             const updateTokenSql = 'UPDATE users SET refresh_token = ? WHERE id = ?';
@@ -366,32 +366,40 @@ exports.resetPassword = async (req, res) => {
             text: `안녕하세요.\n요청하신 임시 비밀번호는 다음과 같습니다.\n\n임시 비밀번호: ${tempPassword}\n\n로그인 후 반드시 비밀번호를 변경해주세요.`
         };
 
-        // 트랜잭션 시작 (이메일 발송 실패 시 롤백하기 위함)
-        await db.promise().beginTransaction();
-
-        // DB에 임시 비밀번호 업데이트
-        const updateSql = 'UPDATE users SET password = ? WHERE email = ?';
-        await db.promise().query(updateSql, [hashedPassword, email]);
-
+        // 단일 connection을 가져와서 안전한 트랜잭션 보장 (DB가 Connection Pool일 경우 필수)
+        const connection = await db.promise().getConnection();
+        
         try {
-            // 이메일 발송 시도
-            await transporter.sendMail(mailOptions);
-            
-            // 모든 작업이 성공했으면 커밋
-            await db.promise().commit();
-            res.status(200).json({ message: '등록된 이메일로 임시 비밀번호가 발송되었습니다.' });
-        } catch (mailErr) {
-            // 이메일 발송 실패 시 비밀번호 변경을 취소(롤백)
-            await db.promise().rollback();
-            console.error('이메일 발송 오류 (롤백됨):', mailErr);
-            return res.status(500).json({ message: '이메일 발송에 실패하여 비밀번호 변경이 취소되었습니다.' });
+            await connection.beginTransaction();
+
+            // DB에 임시 비밀번호 업데이트
+            const updateSql = 'UPDATE users SET password = ? WHERE email = ?';
+            await connection.query(updateSql, [hashedPassword, email]);
+
+            try {
+                // 이메일 발송 시도
+                await transporter.sendMail(mailOptions);
+                
+                // 모든 작업이 성공했으면 커밋
+                await connection.commit();
+                res.status(200).json({ message: '등록된 이메일로 임시 비밀번호가 발송되었습니다.' });
+            } catch (mailErr) {
+                // 이메일 발송 실패 시 비밀번호 변경을 취소(롤백)
+                await connection.rollback();
+                console.error('이메일 발송 오류 (롤백됨):', mailErr);
+                return res.status(500).json({ message: '이메일 발송에 실패하여 비밀번호 변경이 취소되었습니다.' });
+            }
+        } catch (txnErr) {
+            await connection.rollback();
+            throw txnErr; // 상위 catch 블록으로 에러 전달
+        } finally {
+            connection.release(); // 반드시 connection 반납
         }
     } catch (err) {
         console.error('비밀번호 찾기 처리 중 오류:', err);
         return res.status(500).json({ message: '비밀번호 찾기 처리 중 서버 오류가 발생했습니다.' });
     }
 }
-
 
 //다은 작업, 유저 프로필 불러오기에 필요  
 exports.getUserProfile = (req, res) => {
