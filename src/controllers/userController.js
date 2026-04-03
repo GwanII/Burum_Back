@@ -421,29 +421,30 @@ exports.getUserProfile = (req, res) => {
             deadline,
             tags,
             created_at,
-            image_url,
-            assigned_user_id
+            image_url
         FROM posts
         WHERE user_id = ?
         ORDER BY created_at DESC
     `;
 
-    const assignedPostsSql = `
-        SELECT
-            id,
-            user_id,
-            title,
-            content,
-            cost,
-            status,
-            deadline,
-            tags,
-            created_at,
-            image_url,
-            assigned_user_id
-        FROM posts
-        WHERE assigned_user_id = ?
-        ORDER BY created_at DESC
+     const assignedPostsSql = `
+         SELECT
+          p.id,
+          p.user_id,
+          p.title,
+          p.content,
+          p.cost,
+          p.status,
+          p.deadline,
+          p.tags,
+          p.created_at,
+          p.image_url
+      FROM posts p
+      INNER JOIN applications a 
+          ON p.id = a.post_id
+       WHERE a.user_id = ?
+        AND a.status = 'ACCEPTED'
+       ORDER BY p.created_at DESC
     `;
 
     db.query(userSql, [userId], (err, userResults) => {

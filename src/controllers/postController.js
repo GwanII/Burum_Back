@@ -87,15 +87,21 @@ exports.getPostDetail = (req, res) => {
 
     const sql = `
         SELECT
-            p.*,
-            u.nickname AS writerNickname,
-            u.profile_image_url AS writerProfileImage,
-            u.user_title AS writerTitle,
-            u.grade AS writerGrade,
-            au.nickname AS assignedUserNickname
+          p.*,
+          u.nickname AS writerNickname,
+          u.profile_image_url AS writerProfileImage,
+          u.user_title AS writerTitle,
+          u.grade AS writerGrade,
+          au.nickname AS assignedUserNickname
         FROM posts p
         LEFT JOIN users u ON p.user_id = u.id
-        LEFT JOIN users au ON p.assigned_user_id = au.id
+
+        LEFT JOIN applications a 
+         ON p.id = a.post_id AND a.status = 'ACCEPTED'
+
+      LEFT JOIN users au 
+            ON a.user_id = au.id
+
         WHERE p.id = ?
         LIMIT 1
     `;
