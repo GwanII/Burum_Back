@@ -149,6 +149,23 @@ exports.applyForErrand = (req, res) => {
     });
 };
 
+exports.cancelErrand = async (req, res) => {
+  try {
+    const user_id = req.user.id;
+    const post_id = req.body.postId;
+
+    // 🌟 그냥 지원 내역만 삭제하고 끝내기!
+    await db.promise().execute(
+      `DELETE FROM applications WHERE post_id = ? AND user_id = ?`, 
+      [post_id, user_id]
+    );
+
+    res.status(200).json({ success: true, message: "취소 완료" });
+  } catch (e) {
+    res.status(500).json({ success: false });
+  }
+};
+
 exports.getApplicants = (req, res) => {
     const postId = req.params.postId; 
 
