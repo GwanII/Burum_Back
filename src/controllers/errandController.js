@@ -87,6 +87,8 @@ exports.assignErrand = async (req, res) => {
   }
 };
 
+
+
 //선택 취소하기
 exports.cancelAssignErrand = async (req, res) => {
   try {
