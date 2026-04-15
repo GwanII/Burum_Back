@@ -9,8 +9,12 @@ const upload = multer({ dest: 'upload/' });
 
 // 게시글 생성
 router.post('/', verifyToken, upload.array('images', 10), errandController.createErrand);
-router.post('/recommend-price', verifyToken, recommendController.recommendPrice);
+
+// router.get('/', errandController.getErrands);
+//router.post('/recommend-price', verifyToken, recommendController.recommendPrice);
 router.put('/:postId/assign', verifyToken, errandController.assignErrand);
 router.put('/:postId/cancelAssign', verifyToken, errandController.cancelAssignErrand);
+router.put('/:postId/complete', verifyToken, errandController.completeErrand);
 
+module.exports = router;
 module.exports = router;
