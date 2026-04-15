@@ -149,11 +149,28 @@ exports.applyForErrand = (req, res) => {
     });
 };
 
+exports.cancelErrand = async (req, res) => {
+  try {
+    const user_id = req.user.id;
+    const post_id = req.body.postId;
+
+    // 🌟 그냥 지원 내역만 삭제하고 끝내기!
+    await db.promise().execute(
+      `DELETE FROM applications WHERE post_id = ? AND user_id = ?`, 
+      [post_id, user_id]
+    );
+
+    res.status(200).json({ success: true, message: "취소 완료" });
+  } catch (e) {
+    res.status(500).json({ success: false });
+  }
+};
+
 exports.getApplicants = (req, res) => {
     const postId = req.params.postId; 
 
     // 🌟 applications 테이블을 기준으로 users 정보를 조인해서 가져옵니다.
-    const sql = `
+   const sql = `
         SELECT 
             u.id AS user_id, 
             u.nickname, 
@@ -162,7 +179,9 @@ exports.getApplicants = (req, res) => {
             u.grade,
             a.message AS apply_message,  -- 지원 메시지
             a.status,                    -- 지원 상태 (PENDING, ACCEPTED 등)
-            a.created_at                 -- 지원한 시간
+            a.created_at,                -- 지원한 시간
+            -- 👇 여기에 마법의 한 줄 추가! 👇
+            (SELECT assigned_user_id FROM posts WHERE id = a.post_id) AS assigned_user_id
         FROM applications a
         JOIN users u ON a.user_id = u.id
         WHERE a.post_id = ?

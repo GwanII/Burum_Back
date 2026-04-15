@@ -1,12 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const errandController = require('../controllers/errandController');
+const recommendController = require('../controllers/recommendController');
 const multer = require('multer');
-
 const { verifyToken } = require('../middlewares/authMiddleware');
 
-const upload = multer({dest: 'upload/' });
+const upload = multer({ dest: 'upload/' });
 
+// 게시글 생성
 router.post('/', verifyToken, upload.array('images', 10), errandController.createErrand);
 
 // router.get('/', errandController.getErrands);
