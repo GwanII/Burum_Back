@@ -16,12 +16,25 @@ exports.createErrand = async (req, res) => {
     const cost = req.body.cost || 0;
     const deadline = req.body.deadline || null;
     const tags = req.body.tags || null;
-    const image_url = req.body.image_url || null;
+    
+    // 🌟 잃어버렸던 위도, 경도 데이터 구출 완료!
+    const latitude = req.body.latitude || null;
+    const longitude = req.body.longitude || null;
 
+    // 🌟 multer가 안전하게 받아준 이미지 파일들을 JSON 문자열로 변환!
+    let image_url = null;
+    if (req.files && req.files.length > 0) {
+      const imageUrls = req.files.map(file => {
+        return `/uploads/${file.filename}`;
+      });
+      image_url = JSON.stringify(imageUrls);
+    }
+
+    // 🌟 SQL 쿼리에 latitude, longitude 컬럼 완벽 추가!
     const sql = `
       INSERT INTO posts (
-        user_id, title, content, location, cost, status, deadline, tags, image_url
-      ) VALUES (?, ?, ?, ?, ?, 'WAITING', ?, ?, ?)
+        user_id, title, content, location, latitude, longitude, cost, status, deadline, tags, image_url
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'WAITING', ?, ?, ?)
     `;
 
     const values = [
@@ -29,6 +42,8 @@ exports.createErrand = async (req, res) => {
       title,
       content,
       location,
+      latitude,
+      longitude,
       cost,
       deadline,
       tags,
@@ -41,6 +56,7 @@ exports.createErrand = async (req, res) => {
       success: true,
       message: "등록 성공",
       errandId: result.insertId,
+      imageUrls: image_url ? JSON.parse(image_url) : [],
     });
 
   } catch (error) {
@@ -50,7 +66,6 @@ exports.createErrand = async (req, res) => {
       message: "서버 이상 있음"
     });
   }
-
 };
 
 exports.assignErrand = async (req, res) => {
@@ -64,22 +79,21 @@ exports.assignErrand = async (req, res) => {
       SET status = 'ACCEPTED'
       WHERE post_id = ? AND user_id = ?
     `;
-     // 쿼리 실행 (파라미터 순서 주의: postId, assignedUserId 순서대로 배열에 넣습니다)
+    // 쿼리 실행 (파라미터 순서 주의: postId, assignedUserId 순서대로 배열에 넣습니다)
     const [appResult] = await db.promise().execute(appSql, [postId, assignedUserId]);
 
     if (appResult.affectedRows === 0) {
       return res.status(404).json({ success: false, message: "해당 지원 내역을 찾을 수 없습니다." });
     }
 
-     // 💡 (선택 사항) 만약 게시글 자체의 상태도 'IN_PROGRESS(진행중)'로 바꾸고 싶다면 아래 코드를 추가하세요.
-    // (단, 여러 명을 구하는 글이라면 1명만 선택해도 '진행중'으로 바뀔지, 아니면 다 구해야 바뀔지 기획에 따라 결정하시면 됩니다
+    // 💡 (선택 사항) 만약 게시글 자체의 상태도 'IN_PROGRESS(진행중)'로 바꾸고 싶다면 아래 코드를 추가하세요.
     const postSql = `
       UPDATE posts
       SET status = 'IN_PROGRESS',
           assigned_user_id = ?
       WHERE id = ?
     `;
-    //다은 assigned_user_id 추가 
+    // 다은 assigned_user_id 추가 
     await db.promise().execute(postSql, [assignedUserId, postId]);
 
     res.status(200).json({
@@ -92,11 +106,12 @@ exports.assignErrand = async (req, res) => {
   }
 };
 
-//선택 취소 
+// 선택 취소 
 exports.cancelAssignErrand = async (req, res) => {
   try {
     const postId = req.params.postId;
     const assignedUserId = req.body.userId;
+    
     // 🌟 상태를 다시 'PENDING(대기중)'으로 되돌립니다.
     const sql = `
       UPDATE applications
@@ -115,7 +130,7 @@ exports.cancelAssignErrand = async (req, res) => {
           assigned_user_id = NULL
       WHERE id = ?
     `;
-    //다은 추가, 취소하면 맡은 사람도 데이터 비워지게, 
+    // 다은 추가, 취소하면 맡은 사람도 데이터 비워지게
     await db.promise().execute(postSql, [postId]);
 
     res.status(200).json({

@@ -24,12 +24,14 @@ const server = http.createServer(app);
 // socket.io 연결
 initSocket(server);
 
-console.log('📷 이미지 폴더 실제 경로:', path.join(__dirname, '../uploads'));
+console.log('📷 이미지 폴더 실제 경로:', path.join(__dirname, 'uploads'));
 
 // 미들웨어 설정
 app.use(cors());
 app.use(express.json());
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
+// uploads 정적 공개
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 app.use('/api/users', userRouter);
 app.use('/api/posts', postRouter);
