@@ -1,5 +1,8 @@
 // backend/controllers/postController.js
 const db = require('../database');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+const dotenv = require('dotenv');
+dotenv.config();
 
 // 심부름 전체 목록 가져오기
 exports.getAllPosts = (req, res) => {
@@ -196,4 +199,87 @@ exports.getApplicants = (req, res) => {
         
         res.status(200).json(results);
     });
+};
+
+
+// 이 밑으로 남기현이 한거 ai 가격 추천
+
+// Gemini API 클라이언트 초기화
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+
+// 게시물 맞춤 가격 추천
+exports.recommendPrice = async (req, res) => {
+    try {
+        const { title, content, location, deadline, tags } = req.body;
+
+        // 1. 최저시급 등 기준 데이터 (상수로 관리하거나 JSON 모듈을 import 해도 됩니다)
+        const MINIMUM_WAGE_PER_HOUR = 10320; // 2026년 최저시급
+
+        // 2. LLM에게는 계산이 아닌 '데이터 추출 및 분석'만 맡깁니다.
+        const prompt = `
+너는 심부름 매칭 앱의 적정 가격(보상) 추천 AI야.
+사용자가 작성한 심부름 정보를 바탕으로 예상 소요 시간과 난이도 가중치를 분석해줘.
+
+[심부름 정보]
+- 제목: ${title || '입력되지 않음'}
+- 내용: ${content || '입력되지 않음'}
+- 위치: ${location || '입력되지 않음'}
+- 마감시간: ${deadline || '입력되지 않음'}
+- 태그: ${tags ? tags.join(', ') : '입력되지 않음'}
+
+[분석 기준]
+1. estimatedHours (예상 소요 시간, 숫자형): 심부름을 완료하는 데 걸릴 예상 시간(시간 단위). 
+   - 반드시 '이동 시간'을 포함하여 상식적인 수준으로 계산해.
+   - 아무리 빨리 끝나는 단순 작업(예: 벌레 잡기, 쓰레기 버리기)이라도 최소 기본 소요 시간인 0.2(12분) 이상으로 산정해야 해. (예: 12분 = 0.2, 30분 = 0.5, 1시간 = 1.0)
+   - 사용자가 비현실적인 장기간(예: 1달, 1년)을 요구하더라도, 단일 심부름의 최대 소요 시간은 24.0(24시간)을 초과할 수 없어.
+2. difficultyWeight (난이도 가중치, 숫자형): 반드시 1.0에서 2.0 사이의 소수.
+   - 단순 배달/수령 등 쉬운 일: 1.0 ~ 1.2
+   - 무거운 짐 운반, 전문 기술 필요, 악천후, 급한 마감시간: 1.3 ~ 2.0
+   - 어떠한 경우에도 1.0 미만이거나 2.0을 초과할 수 없어.
+3. reason (이유, 문자열): 왜 이런 예상 시간과 가중치를 설정했는지 1~2문장으로 사용자에게 설명해주는 친절한 이유.
+   - 만약 입력된 정보가 너무 부족해 판단하기 어렵다면, "입력된 정보가 부족하여 기본 소요 시간을 기준으로 산정했습니다."라고 작성해.
+
+반드시 아래와 같은 JSON 형식으로만 응답해.
+{
+  "estimatedHours": 1.5,
+  "difficultyWeight": 1.3,
+  "reason": "무거운 물건을 옮기는 작업이 포함되어 있어 난이도 가중치 1.3을 적용했으며, 이동 시간을 고려해 약 1시간 30분이 소요될 것으로 예상됩니다."
+}
+`;
+        const model = genAI.getGenerativeModel({ 
+            model: "gemini-2.5-flash",
+            generationConfig: { responseMimeType: "application/json" }
+        });
+        const result = await model.generateContent(prompt);
+        let responseText = result.response.text();
+
+        const analysis = JSON.parse(responseText);
+
+        // 안전한 숫자 변환 및 이중 방어 (AI의 환각이나 오류로 범위를 벗어난 값을 줄 경우 강제 조정)
+        let estHours = Number(analysis.estimatedHours);
+        estHours = (isNaN(estHours) || estHours <= 0) ? 1.0 : Math.min(Math.max(estHours, 0.2), 24.0); // 0.2 ~ 24 시간 제한
+
+        let diffWeight = Number(analysis.difficultyWeight);
+        diffWeight = (isNaN(diffWeight) || diffWeight < 1.0) ? 1.0 : Math.min(diffWeight, 2.0); // 1.0 ~ 2.0 가중치 제한
+
+        // 3. 실제 가격 계산은 Node.js(서버)에서 정확하게 수행
+        let calculatedPrice = MINIMUM_WAGE_PER_HOUR * estHours * diffWeight;
+        
+        // 100원 단위 반올림으로 깔끔하게 정리 (예: 12,345원 -> 12,300원)
+        calculatedPrice = Math.round(calculatedPrice / 100) * 100;
+
+        // 프론트엔드로 전달할 최종 추천 데이터 구성
+        const recommendation = {
+            suggestedPrice: calculatedPrice,
+            estimatedHours: estHours,
+            difficultyWeight: diffWeight,
+            reason: analysis.reason || "분석을 통해 적정 가격이 산출되었습니다."
+        };
+
+        res.status(200).json({ success: true, data: recommendation });
+
+    } catch (error) {
+        console.error("가격 추천 AI 에러:", error);
+        res.status(500).json({ success: false, message: '적정 가격을 분석하는 중 오류가 발생했습니다.' });
+    }
 };
