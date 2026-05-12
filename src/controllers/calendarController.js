@@ -2,29 +2,63 @@ const db = require('../database');
 
 // [기본 기능] 사용자가 캘린더에서 직접 수행하는 일정 제어 로직
 exports.createCalendarEvent = async (req, res) => {
-    try {
-        const userId = req.user.id; 
-        const { title, content, location, color, alarm, schedules } = req.body;
+try {
+        // 1. 작성자 ID 확인 (토큰에서 가져옴)
+        const writerId = req.user ? req.user.id : null; 
+        const { applicantId, title, deadline, location } = req.body;
 
-        if (!title || !schedules || schedules.length === 0) {
-            return res.status(400).json({ success: false, message: '제목과 날짜/시간은 필수입니다.' });
+        console.log("=========================================");
+        console.log("🚀 [광역 연동 시작]");
+        console.log("작성자(나) ID:", writerId);
+        console.log("지원자 ID:", applicantId);
+        console.log("게시물 제목:", title);
+        console.log("=========================================");
+
+        if (!writerId || !applicantId || !title || !deadline) {
+            console.log("🚨 데이터 누락 발생! 작성자 ID가 없거나 필수값이 부족하오!");
+            return res.status(400).json({ success: false, message: '데이터가 부족하여 연동할 수 없소!' });
         }
 
-        const schedulesJson = JSON.stringify(schedules);
-        const query = `
-            INSERT INTO calendars 
-            (user_id, title, content, location, color, alarm, schedules) 
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        `;
-        
-        const [result] = await db.promise().execute(query, [
-            userId, title, content || '', location || '', color || '#90B2AB', alarm || '정각', schedulesJson
+        // 2. 날짜 번역 (이전의 번역 마법 계승)
+        let deadlineDate;
+        const dateMatch = deadline.match(/(\d+)\/(\d+)\s+(\d+):(\d+)/);
+        if (dateMatch) {
+            const currentYear = new Date().getFullYear();
+            deadlineDate = new Date(currentYear, parseInt(dateMatch[1]) - 1, parseInt(dateMatch[2]), parseInt(dateMatch[3]), parseInt(dateMatch[4]));
+        } else {
+            deadlineDate = new Date(deadline);
+        }
+
+        if (isNaN(deadlineDate.getTime())) {
+            return res.status(400).json({ success: false, message: '날짜 형식이 잘못되었소!' });
+        }
+
+        const endTime = new Date(deadlineDate.getTime() + (60 * 60 * 1000));
+        const formatDateTime = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:00`;
+        const schedulesJson = JSON.stringify([{ start: formatDateTime(deadlineDate), end: formatDateTime(endTime) }]);
+
+        // 🛡️ [안전 장치] 두 번의 INSERT를 병렬로 실행하여 한 명이 실패해도 로그를 남김!
+        const query = `INSERT INTO calendars (user_id, title, content, location, color, alarm, schedules) VALUES (?, ?, ?, ?, ?, ?, ?)`;
+
+        // ⚔️ 1번: 지원자 등록
+        const insertApplicant = db.promise().execute(query, [
+            applicantId, `[수행할 심부름] ${title}`, '확정된 심부름입니다.', location || '', '#FFCCBC', '30', schedulesJson
         ]);
 
-        res.status(201).json({ success: true, message: '일정 등록 완료!', calendarId: result.insertId });
+        // ⚔️ 2번: 작성자 등록
+        const insertWriter = db.promise().execute(query, [
+            writerId, `[내가 요청한 심부름] ${title}`, '지원자가 매칭되었습니다.', location || '', '#FFF59D', '30', schedulesJson
+        ]);
+
+        // 두 주문이 모두 끝날 때까지 기다림!
+        await Promise.all([insertApplicant, insertWriter]);
+
+        console.log("✅ [성공] 작성자와 지원자 모두 등록 완료!");
+        res.status(201).json({ success: true, message: '양쪽 달력에 모두 등록되었소!' });
+
     } catch (error) {
-        console.error("에러 발생:", error);
-        res.status(500).json({ success: false, message: '서버 에러' });
+        console.error("🚨 광역 연동 중 치명적 에러:", error);
+        res.status(500).json({ success: false, message: '서버 에러 발생!' });
     }
 };
 
