@@ -17,4 +17,6 @@ router.get('/:postId/applicants', postController.getApplicants);
 router.post('/applyErrand', verifyToken, postController.applyForErrand);
 router.post('/cancelErrand', verifyToken, postController.cancelErrand);
 
+router.post('/price', verifyToken, postController.recommendPrice);
+
 module.exports = router;
