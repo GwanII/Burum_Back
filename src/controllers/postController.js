@@ -183,6 +183,7 @@ exports.getApplicants = (req, res) => {
             a.message AS apply_message,  -- 지원 메시지
             a.status,                    -- 지원 상태 (PENDING, ACCEPTED 등)
             a.created_at,                -- 지원한 시간
+            a.is_read_by_writer,
             -- 👇 여기에 마법의 한 줄 추가! 👇
             (SELECT assigned_user_id FROM posts WHERE id = a.post_id) AS assigned_user_id
         FROM applications a
