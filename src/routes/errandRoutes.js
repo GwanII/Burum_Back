@@ -42,5 +42,7 @@ router.post('/:postId/cancelAssign', verifyToken, errandController.cancelAssignE
 
 // 🎉 4. 심부름 완료 처리
 router.post('/:postId/complete', verifyToken, errandController.completeErrand);
+router.put('/:postId/read-applicants', verifyToken, errandController.markApplicantsAsRead);
+router.put('/:postId/read-assigned', verifyToken, errandController.markAssignedNoticeAsRead);
 
 module.exports = router;

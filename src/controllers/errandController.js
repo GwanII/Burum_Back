@@ -89,8 +89,9 @@ exports.assignErrand = async (req, res) => {
     // 💡 (선택 사항) 만약 게시글 자체의 상태도 'IN_PROGRESS(진행중)'로 바꾸고 싶다면 아래 코드를 추가하세요.
     const postSql = `
       UPDATE posts
-      SET status = 'IN_PROGRESS',
+      SET status = 'MATCHED',
           assigned_user_id = ?
+          assigned_notice_read = 0
       WHERE id = ?
     `;
     // 다은 assigned_user_id 추가 
@@ -149,7 +150,7 @@ exports.completeErrand = async (req, res) => {
 
     const sql = `
       UPDATE posts
-      SET status = 'COMPLETED'
+      SET status = 'COMPLETE'
       WHERE id = ?
     `;
 
@@ -166,5 +167,47 @@ exports.completeErrand = async (req, res) => {
   } catch (error) {
     console.error('심부름 완료 처리 실패:', error);
     res.status(500).json({ success: false, message: '서버 에러가 발생했습니다.' });
+  }
+};
+
+exports.markApplicantsAsRead = async (req, res) => {
+  try {
+    const postId = req.params.postId;
+
+    await db.promise().execute(
+      `UPDATE applications 
+       SET is_read_by_writer = 1 
+       WHERE post_id = ?`,
+      [postId]
+    );
+
+    res.status(200).json({
+      success: true,
+      message: '지원자 알림 확인 처리 완료'
+    });
+  } catch (error) {
+    console.error('지원자 알림 확인 실패:', error);
+    res.status(500).json({ success: false, message: '서버 에러' });
+  }
+};
+
+exports.markAssignedNoticeAsRead = async (req, res) => {
+  try {
+    const postId = req.params.postId;
+
+    await db.promise().execute(
+      `UPDATE posts 
+       SET assigned_notice_read = 1 
+       WHERE id = ?`,
+      [postId]
+    );
+
+    res.status(200).json({
+      success: true,
+      message: '배정 알림 확인 처리 완료'
+    });
+  } catch (error) {
+    console.error('배정 알림 확인 실패:', error);
+    res.status(500).json({ success: false, message: '서버 에러' });
   }
 };

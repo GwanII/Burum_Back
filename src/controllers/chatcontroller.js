@@ -1,6 +1,8 @@
 const db = require('../database');
 const multer = require('multer');
 const { getIo } = require('../socket');
+const path = require('path');
+const fs = require('fs');
 
 /**
  * 특정 채팅방에 속한 모든 사용자에게
@@ -35,67 +37,131 @@ function emitChatRoomUpdatedToUsers(roomId) {
     }
   });
 }
-
 // 1. 채팅방 생성
 exports.createChatRoom = (req, res) => {
   const { user1, user2, postId } = req.body;
 
-  const checkSql = `
-    SELECT cr.id
-    FROM chat_rooms cr
-    JOIN chat_room_users u1 ON cr.id = u1.chat_room_id
-    JOIN chat_room_users u2 ON cr.id = u2.chat_room_id
-    WHERE u1.user_id = ? 
-      AND u2.user_id = ?
-      AND (
-        (cr.post_id = ?)
-        OR (cr.post_id IS NULL AND ? IS NULL)
-      )
-    LIMIT 1
-  `;
+  if (!user1 || !user2) {
+    return res.status(400).json({ message: 'user1, user2가 필요합니다.' });
+  }
 
-  db.query(checkSql, [user1, user2, postId, postId], (err, rooms) => {
-    if (err) return res.status(500).json(err);
+  if (Number(user1) === Number(user2)) {
+    return res.status(400).json({ message: '자기 자신과는 채팅방을 만들 수 없습니다.' });
+  }
 
-    if (rooms.length > 0) {
-      return res.json({
-        message: '이미 존재하는 채팅방',
-        roomId: rooms[0].id,
-      });
+  const normalizedPostId = postId || null;
+
+  db.getConnection((connErr, connection) => {
+    if (connErr) {
+      console.error('DB connection error:', connErr);
+      return res.status(500).json({ message: 'DB 연결 실패' });
     }
 
-    const createRoomSql = `
-      INSERT INTO chat_rooms (post_id)
-      VALUES (?)
-    `;
+    connection.beginTransaction((txErr) => {
+      if (txErr) {
+        connection.release();
+        return res.status(500).json({ message: '트랜잭션 시작 실패' });
+      }
 
-    db.query(createRoomSql, [postId || null], (err2, result) => {
-      if (err2) return res.status(500).json(err2);
-
-      const roomId = result.insertId;
-
-      const addUsersSql = `
-        INSERT INTO chat_room_users (chat_room_id, user_id)
-        VALUES (?, ?), (?, ?)
+      const checkSql = `
+        SELECT cr.id
+        FROM chat_rooms cr
+        JOIN chat_room_users u1 
+          ON cr.id = u1.chat_room_id
+        JOIN chat_room_users u2 
+          ON cr.id = u2.chat_room_id
+        WHERE u1.user_id = ?
+          AND u2.user_id = ?
+          AND (
+            (cr.post_id = ?)
+            OR (cr.post_id IS NULL AND ? IS NULL)
+          )
+        LIMIT 1
       `;
 
-      db.query(addUsersSql, [roomId, user1, roomId, user2], (err3) => {
-        if (err3) return res.status(500).json(err3);
+      connection.query(
+        checkSql,
+        [user1, user2, normalizedPostId, normalizedPostId],
+        (checkErr, rooms) => {
+          if (checkErr) {
+            return connection.rollback(() => {
+              connection.release();
+              console.error('채팅방 중복 체크 오류:', checkErr);
+              res.status(500).json({ message: '채팅방 확인 실패' });
+            });
+          }
 
-        try {
-          const io = getIo();
+          if (rooms.length > 0) {
+            return connection.commit(() => {
+              connection.release();
+              res.json({
+                message: '이미 존재하는 채팅방',
+                roomId: rooms[0].id,
+              });
+            });
+          }
 
-          io.to(`user:${user1}`).emit('chatRoomCreated', { roomId });
-          io.to(`user:${user2}`).emit('chatRoomCreated', { roomId });
-        } catch (socketErr) {
-          console.error('socket emit 오류(createChatRoom):', socketErr.message);
+          const createRoomSql = `
+            INSERT INTO chat_rooms (post_id)
+            VALUES (?)
+          `;
+
+          connection.query(createRoomSql, [normalizedPostId], (roomErr, result) => {
+            if (roomErr) {
+              return connection.rollback(() => {
+                connection.release();
+                console.error('채팅방 생성 오류:', roomErr);
+                res.status(500).json({ message: '채팅방 생성 실패' });
+              });
+            }
+
+            const roomId = result.insertId;
+
+            const addUsersSql = `
+              INSERT INTO chat_room_users (chat_room_id, user_id)
+              VALUES (?, ?), (?, ?)
+            `;
+
+            connection.query(
+              addUsersSql,
+              [roomId, user1, roomId, user2],
+              (userErr) => {
+                if (userErr) {
+                  return connection.rollback(() => {
+                    connection.release();
+                    console.error('채팅방 유저 연결 오류:', userErr);
+                    res.status(500).json({ message: '채팅방 참여자 등록 실패' });
+                  });
+                }
+
+                connection.commit((commitErr) => {
+                  if (commitErr) {
+                    return connection.rollback(() => {
+                      connection.release();
+                      res.status(500).json({ message: '채팅방 생성 저장 실패' });
+                    });
+                  }
+
+                  connection.release();
+
+                  try {
+                    const io = getIo();
+                    io.to(`user:${user1}`).emit('chatRoomCreated', { roomId });
+                    io.to(`user:${user2}`).emit('chatRoomCreated', { roomId });
+                  } catch (socketErr) {
+                    console.error('socket emit 오류(createChatRoom):', socketErr.message);
+                  }
+
+                  res.json({
+                    message: '채팅방 새로 생성',
+                    roomId,
+                  });
+                });
+              }
+            );
+          });
         }
-
-        res.json({
-          message: '채팅방 새로 생성',
-          roomId,
-        });
-      });
+      );
     });
   });
 };
@@ -197,6 +263,12 @@ exports.getMyChatRooms = (req, res) => {
       p.status AS postStatus,
       p.deadline AS postDeadline,
       p.user_id AS postWriterId,
+      p.tags As postTags,
+      
+      writer.nickname AS postWriterNickname,
+      writer.profile_image_url AS postWriterProfileImage,
+      writer.user_title AS postWriterTitle,
+      writer.grade AS postWriterGrade,
 
       m.content AS lastMessage,
       m.type AS lastMessageType,
@@ -225,6 +297,9 @@ exports.getMyChatRooms = (req, res) => {
 
     LEFT JOIN posts p
       ON p.id = cr.post_id
+
+    LEFT JOIN users writer
+    ON writer.id = p.user_id
 
     LEFT JOIN messages m
       ON m.id = (
@@ -380,9 +455,15 @@ exports.togglePinRoom = (req, res) => {
 };
 
 // 9. 이미지 전송
+const uploadDir = path.join(__dirname, '..', 'uploads');
+
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'uploads/');
+    cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
     cb(null, Date.now() + '-' + file.originalname);
