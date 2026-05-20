@@ -283,3 +283,55 @@ exports.recommendPrice = async (req, res) => {
         res.status(500).json({ success: false, message: '적정 가격을 분석하는 중 오류가 발생했습니다.' });
     }
 };
+
+// 게시물 수정 (PUT)
+exports.updatePost = async (req, res) => {
+    try {
+        const postId = req.params.id;
+        const userId = req.user.id;
+
+        // 1. 해당 게시물이 존재하는지, 본인 글인지 권한 확인
+        const [post] = await db.promise().query('SELECT * FROM posts WHERE id = ?', [postId]);
+        
+        if (post.length === 0) {
+            return res.status(404).json({ success: false, message: '게시물을 찾을 수 없습니다.' });
+        }
+        if (post[0].user_id !== userId) {
+            return res.status(403).json({ success: false, message: '게시물 수정 권한이 없습니다.' });
+        }
+
+        // 2. 전달받은 데이터 추출 (값이 안 들어왔으면 기존 값 유지)
+        const title = req.body.title || post[0].title;
+        const content = req.body.content || post[0].content;
+        const location = req.body.location || post[0].location;
+        const latitude = req.body.latitude || post[0].latitude;
+        const longitude = req.body.longitude || post[0].longitude;
+        const cost = req.body.cost || post[0].cost;
+        const deadline = req.body.deadline || post[0].deadline;
+        const tags = req.body.tags || post[0].tags;
+
+        // 3. 이미지 처리 로직
+        let image_url = post[0].image_url; // 기본적으로 기존 이미지 유지
+        if (req.files && req.files.length > 0) {
+            // 새로운 이미지가 업로드된 경우 덮어쓰기
+            const imageUrls = req.files.map(file => `/uploads/${file.filename}`);
+            image_url = JSON.stringify(imageUrls);
+        }
+
+        // 4. DB 업데이트 실행
+        const updateSql = `
+            UPDATE posts 
+            SET title = ?, content = ?, location = ?, latitude = ?, longitude = ?, cost = ?, deadline = ?, tags = ?, image_url = ?
+            WHERE id = ?
+        `;
+        
+        await db.promise().execute(updateSql, [
+            title, content, location, latitude, longitude, cost, deadline, tags, image_url, postId
+        ]);
+
+        res.status(200).json({ success: true, message: '게시물이 성공적으로 수정되었습니다.' });
+    } catch (error) {
+        console.error('게시물 수정 실패:', error);
+        res.status(500).json({ success: false, message: '게시물 수정 중 서버 에러가 발생했습니다.' });
+    }
+};
