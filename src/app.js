@@ -44,10 +44,21 @@ app.get('/', (req, res) => {
   res.send('🚧 BURUM(JS버전) 서버 정상 가동 중! 🚧');
 });
 
+/*
 // 서버 시작
 server.listen(PORT, () => {
   console.log(`
   🚀 Server listening on port: ${PORT}
   🚀 http://localhost:${PORT}
+  `);
+});
+*/
+
+
+//--성빈: 외부(스마트폰)의 접속을 10000% 허락하는 위대한 개방 마법
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`
+  🚀 위대한 서버가 포트 ${PORT} 에서 깨어났소!!!!!
+  🚀 외부 기기(스마트폰) 접속 대문 완벽 개방 완료!!!!! (0.0.0.0)
   `);
 });
