@@ -16,6 +16,16 @@ const { initSocket } = require('./socket');
 dotenv.config();
 
 const app = express();
+/*
+미래를 위한 대비: 나중에 웹사이트를 만들거나, 
+아주 간단한 외부 연동을 할 때, 
+굳이 복잡한 JSON 형식이 아닌 전통적인 방식을 쓰는 도구들을 사용할 일이 생길 수 있소. 
+그때 이 코드가 없으면 서버가 "나는 이거 해석 못 해!" 하고 에러를 뱉을 것이오.
+표준 관례: Node.js Express를 
+사용하는 전 세계의 모든 마법사들이 '기본 세팅'으로 넣어두는 코드요. 
+용사님의 서버를 더욱 단단하고 범용성 있게 만들기 위한 '기본 방어구'라고 생각하시오!
+*/
+app.use(express.urlencoded({ extended: true })); // <-- 이거 이거 
 const PORT = process.env.PORT || 3000;
 
 // http server 생성
@@ -30,8 +40,11 @@ console.log('📷 이미지 폴더 실제 경로:', path.join(__dirname, 'upload
 app.use(cors());
 app.use(express.json());
 
+
 // uploads 정적 공개
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', express.static('uploads'));
+
 
 app.use('/api/users', userRouter);
 app.use('/api/posts', postRouter);

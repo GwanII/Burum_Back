@@ -90,7 +90,7 @@ exports.assignErrand = async (req, res) => {
     const postSql = `
       UPDATE posts
       SET status = 'MATCHED',
-          assigned_user_id = ?
+          assigned_user_id = ?,
           assigned_notice_read = 0
       WHERE id = ?
     `;
