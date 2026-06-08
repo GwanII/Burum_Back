@@ -4,22 +4,36 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const dotenv = require('dotenv');
 dotenv.config();
 
-// 심부름 전체 목록 가져오기
-exports.getAllPosts = (req, res) => {
-    const sql = `
-        SELECT p.*, u.nickname 
-        FROM posts p 
-        LEFT JOIN users u ON p.user_id = u.id 
-        ORDER BY p.created_at DESC
-    `;
+// 심부름 전체 목록 or 추천 목록 가져오기
+exports.getAllPosts = async (req, res) => {
+    try {
+        // 1. 전체 게시물 (기존 로직: 최신순)
+        const allSql = `
+            SELECT p.*, u.nickname 
+            FROM posts p 
+            LEFT JOIN users u ON p.user_id = u.id 
+            ORDER BY p.created_at DESC
+        `;
+        const [allPosts] = await db.promise().query(allSql);
 
-    db.query(sql, (err, results) => {
-        if (err) {
-            console.error(err);
-            return res.status(500).json({ message: 'DB 에러' });
-        }
-        res.status(200).json(results);
-    });
+        // 2. 추천 게시물
+        const recommendedSql = `
+            SELECT p.*, u.nickname 
+            FROM posts p 
+            LEFT JOIN users u ON p.user_id = u.id
+            ORDER BY p.view_count DESC, p.created_at DESC
+        `;
+        const [recommendedPosts] = await db.promise().query(recommendedSql);
+
+        // 전체 게시물과 추천 게시물을 한 번에 응답
+        res.status(200).json({
+            allPosts: allPosts,
+            recommendedPosts: recommendedPosts
+        });
+    } catch (err) {
+        console.error('게시물 및 추천 목록 조회 중 DB 에러:', err);
+        res.status(500).json({ message: 'DB 에러' });
+    }
 };
 
 exports.getTrendingTags = (req, res) => {
@@ -334,5 +348,46 @@ exports.updatePost = async (req, res) => {
     } catch (error) {
         console.error('게시물 수정 실패:', error);
         res.status(500).json({ success: false, message: '게시물 수정 중 서버 에러가 발생했습니다.' });
+    }
+};
+
+// 카운트(조회수) 기반 인기 추천 게시물 가져오기
+exports.getRecommendedPosts = (req, res) => {
+    // 조회수가 높은 순서, 그리고 최신순으로 정렬하여 상위 10개만 추천합니다.
+    // WAITING 상태(진행 대기 중)인 심부름만 보이도록 처리했습니다.
+    const sql = `
+        SELECT p.*, u.nickname 
+        FROM posts p 
+        LEFT JOIN users u ON p.user_id = u.id 
+        WHERE p.status = 'WAITING'
+        ORDER BY p.view_count DESC, p.created_at DESC
+        LIMIT 10
+    `;
+
+    db.query(sql, (err, results) => {
+        if (err) {
+            console.error('추천 게시물 조회 중 DB 오류:', err);
+            return res.status(500).json({ message: 'DB 에러' });
+        }
+        res.status(200).json(results);
+    });
+};
+
+// 게시물 상세 페이지 진입 시 조회수 증가
+exports.increaseViewCount = async (req, res) => {
+    const postId = Number(req.params.id);
+
+    if (isNaN(postId)) {
+        return res.status(400).json({ success: false, message: '잘못된 게시물 ID입니다.' });
+    }
+
+    try {
+        const updateViewCountSql = `UPDATE posts SET view_count = IFNULL(view_count, 0) + 1 WHERE id = ?`;
+        await db.promise().execute(updateViewCountSql, [postId]);
+        
+        res.status(200).json({ success: true, message: '조회수가 성공적으로 증가했습니다.' });
+    } catch (err) {
+        console.error('🚨 조회수 업데이트 중 서버 오류:', err);
+        return res.status(500).json({ success: false, message: '서버 에러가 발생했습니다.' });
     }
 };
