@@ -35,6 +35,7 @@ const sql = `
     content TEXT NOT NULL,
     cost INT DEFAULT 0,
     status ENUM('WAITING', 'MATCHED', 'COMPLETE') DEFAULT 'WAITING',
+    view_count INT DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)
   );
