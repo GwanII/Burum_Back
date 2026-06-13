@@ -16,6 +16,23 @@ exports.getAllPosts = async (req, res) => {
         `;
         const [allPosts] = await db.promise().query(allSql);
 
+        // 🌟 안전한 파싱 로직 적용
+        const safeParse = (post) => {
+            let tags = [];
+            let image_url = [];
+            try {
+                tags = post.tags ? (typeof post.tags === 'string' ? JSON.parse(post.tags) : post.tags) : [];
+            } catch (e) { tags = []; }
+            try {
+                image_url = post.image_url ? (typeof post.image_url === 'string' ? JSON.parse(post.image_url) : post.image_url) : [];
+            } catch (e) {
+                image_url = (typeof post.image_url === 'string' && post.image_url.startsWith('http')) ? [post.image_url] : [];
+            }
+            return { ...post, tags, image_url };
+        };
+
+        const parsedAllPosts = allPosts.map(safeParse);
+
         // 2. 추천 게시물
         const recommendedSql = `
             SELECT p.*, u.nickname 
@@ -24,11 +41,12 @@ exports.getAllPosts = async (req, res) => {
             ORDER BY p.view_count DESC, p.created_at DESC
         `;
         const [recommendedPosts] = await db.promise().query(recommendedSql);
+        const parsedRecommendedPosts = recommendedPosts.map(safeParse);
 
         // 전체 게시물과 추천 게시물을 한 번에 응답
         res.status(200).json({
-            allPosts: allPosts,
-            recommendedPosts: recommendedPosts
+            allPosts: parsedAllPosts,
+            recommendedPosts: parsedRecommendedPosts
         });
     } catch (err) {
         console.error('게시물 및 추천 목록 조회 중 DB 에러:', err);
@@ -83,17 +101,17 @@ exports.getTrendingTags = (req, res) => {
 //옮길거
 exports.getUserProfile = (req, res) => {
     const userId = req.user.id;
-    // 🌟 id를 추가로 SELECT 합니다.
-    const sql = 'SELECT id, nickname FROM users WHERE id = ?';
+    // 🌟 id와 completed_errand_count를 추가로 SELECT 합니다.
+    const sql = 'SELECT id, nickname, completed_errand_count FROM users WHERE id = ?';
 
     db.query(sql, [userId], (err, results) => {
         if (err) return res.status(500).json({ message: 'DB 에러' });
         if (results.length === 0) return res.status(404).json({ message: '유저 없음' });
 
-        // 🌟 id와 nickname을 모두 플러터로 보냅니다.
         res.status(200).json({ 
             id: results[0].id, 
-            nickname: results[0].nickname 
+            nickname: results[0].nickname,
+            completed_errand_count: results[0].completed_errand_count
         });
     });
 };
@@ -133,7 +151,21 @@ exports.getPostDetail = (req, res) => {
             return res.status(404).json({ message: '게시물을 찾을 수 없습니다.' });
         }
 
-        res.status(200).json(results[0]);
+        const post = results[0];
+        let tags = [];
+        let image_url = [];
+        try {
+            tags = post.tags ? (typeof post.tags === 'string' ? JSON.parse(post.tags) : post.tags) : [];
+        } catch (e) { tags = []; }
+        try {
+            image_url = post.image_url ? (typeof post.image_url === 'string' ? JSON.parse(post.image_url) : post.image_url) : [];
+        } catch (e) {
+            image_url = (typeof post.image_url === 'string' && post.image_url.startsWith('http')) ? [post.image_url] : [];
+        }
+
+        const parsedPost = { ...post, tags, image_url };
+
+        res.status(200).json(parsedPost);
     });
 };
 
@@ -194,6 +226,7 @@ exports.getApplicants = (req, res) => {
             u.profile_image_url, 
             u.user_title, 
             u.grade,
+            u.completed_errand_count,    -- 지원자의 심부름 완료 횟수 추가
             a.message AS apply_message,  -- 지원 메시지
             a.status,                    -- 지원 상태 (PENDING, ACCEPTED 등)
             a.created_at,                -- 지원한 시간
@@ -310,7 +343,7 @@ exports.getRecommendedPosts = async (req, res) => {
                 LEFT JOIN user_tag_preferences utp 
                     ON utp.user_id = ? AND JSON_CONTAINS(p.tags, CONCAT('"', utp.tag, '"'))
                 WHERE p.status = 'WAITING'
-                GROUP BY p.id
+                GROUP BY p.id, u.nickname
                 ORDER BY match_score DESC, distance ASC -- 점수가 높고, 거리가 가까운 순 정렬
                 LIMIT 10
             `;

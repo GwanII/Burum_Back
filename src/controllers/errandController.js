@@ -15,7 +15,7 @@ exports.createErrand = async (req, res) => {
     const location = req.body.location || '';
     const cost = req.body.cost || 0;
     const deadline = req.body.deadline || null;
-    const tags = req.body.tags || null;
+    let tags = req.body.tags || null;
     
     // 🌟 잃어버렸던 위도, 경도 데이터 구출 완료!
     const latitude = req.body.latitude || null;
@@ -28,6 +28,11 @@ exports.createErrand = async (req, res) => {
         return `/uploads/${file.filename}`;
       });
       image_url = JSON.stringify(imageUrls);
+    }
+
+    // 🌟 태그가 배열(Array)로 들어온다면 DB 저장을 위해 문자열로 변환합니다.
+    if (tags && typeof tags !== 'string') {
+      tags = JSON.stringify(tags);
     }
 
     // 🌟 SQL 쿼리에 latitude, longitude 컬럼 완벽 추가!
@@ -148,6 +153,14 @@ exports.completeErrand = async (req, res) => {
   try {
     const postId = req.params.postId;
 
+    // 1. 배정된 유저 정보를 미리 조회 (카운트 증가를 위해)
+    const [postRows] = await db.promise().execute(
+      'SELECT assigned_user_id FROM posts WHERE id = ?',
+      [postId]
+    );
+
+    if (postRows.length === 0) return res.status(404).json({ success: false, message: '게시물을 찾을 수 없습니다.' });
+
     const sql = `
       UPDATE posts
       SET status = 'COMPLETE'
@@ -158,6 +171,23 @@ exports.completeErrand = async (req, res) => {
 
     if (result.affectedRows === 0) {
       return res.status(404).json({ success: false, message: '게시물을 찾을 수 없습니다.' });
+    }
+
+    // 2. 배정된 유저가 있다면 해당 유저의 completed_errand_count를 1 증가시킴
+    const assignedUserId = postRows[0].assigned_user_id;
+    if (assignedUserId) {
+      const updateUserSql = `
+        UPDATE users 
+        SET completed_errand_count = completed_errand_count + 1,
+            grade = CASE 
+                WHEN (completed_errand_count + 1) >= 100 THEN 'S'
+                WHEN (completed_errand_count + 1) >= 50 THEN 'A'
+                WHEN (completed_errand_count + 1) >= 10 THEN 'B'
+                ELSE grade 
+            END
+        WHERE id = ?
+      `;
+      await db.promise().execute(updateUserSql, [assignedUserId]);
     }
 
     res.status(200).json({
