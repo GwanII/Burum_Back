@@ -413,6 +413,7 @@ exports.getUserProfile = (req, res) => {
             profile_image_url,
             user_title,
             grade,
+            completed_errand_count,
             created_at
         FROM users
         WHERE id = ?
@@ -477,10 +478,30 @@ exports.getUserProfile = (req, res) => {
                     return res.status(500).json({ message: '수락 게시물 조회 중 DB 오류' });
                 }
 
+            // 🌟 JSON 파싱 에러 방지 처리
+            const parsePosts = (posts) => posts.map(post => {
+                let tags = [];
+                let image_url = [];
+                try {
+                    tags = post.tags ? (typeof post.tags === 'string' ? JSON.parse(post.tags) : post.tags) : [];
+                } catch (e) { tags = []; }
+                
+                try {
+                    image_url = post.image_url ? (typeof post.image_url === 'string' ? JSON.parse(post.image_url) : post.image_url) : [];
+                } catch (e) {
+                    // 파싱 실패 시 (일반 URL 문자열인 경우) 배열로 감싸서 반환
+                    image_url = (typeof post.image_url === 'string' && post.image_url.startsWith('http')) ? [post.image_url] : [];
+                }
+                return { ...post, tags, image_url };
+            });
+
+            const parsedCreatedPosts = parsePosts(createdPosts);
+            const parsedAssignedPosts = parsePosts(assignedPosts);
+
                 return res.status(200).json({
                     user: userResults[0],
-                    createdPosts,
-                    assignedPosts
+                createdPosts: parsedCreatedPosts,
+                assignedPosts: parsedAssignedPosts
                 });
             });
         });
